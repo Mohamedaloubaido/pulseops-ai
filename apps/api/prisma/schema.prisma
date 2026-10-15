@@ -35,6 +35,12 @@ enum IncidentStatus {
   RESOLVED
 }
 
+enum MonitorStatus {
+  UNKNOWN
+  UP
+  DOWN
+}
+
 model User {
   id               String           @id @default(cuid())
   email            String           @unique
@@ -100,10 +106,46 @@ model Service {
   organizationId String
   organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   incidents      IncidentService[]
+  monitors       Monitor[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, displayOrder])
   @@index([organizationId, status])
+}
+
+model Monitor {
+  id                 String         @id @default(cuid())
+  name               String
+  url                String
+  intervalSeconds    Int            @default(60)
+  timeoutMs          Int            @default(5000)
+  expectedStatus     Int            @default(200)
+  enabled            Boolean        @default(true)
+  lastStatus         MonitorStatus  @default(UNKNOWN)
+  lastCheckedAt      DateTime?
+  lastResponseTimeMs Int?
+  consecutiveFailures Int           @default(0)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  serviceId          String
+  service            Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  checks             MonitorCheck[]
+
+  @@index([serviceId, enabled])
+  @@index([enabled, lastCheckedAt])
+}
+
+model MonitorCheck {
+  id             String        @id @default(cuid())
+  status         MonitorStatus
+  statusCode     Int?
+  responseTimeMs Int?
+  error          String?
+  checkedAt      DateTime      @default(now())
+  monitorId      String
+  monitor        Monitor       @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@index([monitorId, checkedAt])
 }
 
 model Incident {
