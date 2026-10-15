@@ -12,6 +12,8 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
   OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().min(1).default("gpt-6-luna"),
+  AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(5000).max(120000).default(30000),
 });
 
 const parsed = envSchema.safeParse(process.env);
