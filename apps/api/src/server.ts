@@ -3,12 +3,14 @@ import { ZodError } from "zod";
 import { env } from "./env.js";
 import { ApiError } from "./lib/api-error.js";
 import { db } from "./lib/db.js";
+import { closeRealtimePublisher } from "./realtime/bus.js";
 import { authRoutes } from "./routes/auth.js";
 import { healthRoutes } from "./routes/health.js";
 import { incidentRoutes } from "./routes/incidents.js";
 import { monitorRoutes } from "./routes/monitors.js";
 import { organizationRoutes } from "./routes/organizations.js";
 import { publicStatusRoutes } from "./routes/public-status.js";
+import { realtimeRoutes } from "./routes/realtime.js";
 import { serviceRoutes } from "./routes/services.js";
 
 const app = Fastify({
@@ -37,16 +39,18 @@ await app.register(serviceRoutes, { prefix: "/api" });
 await app.register(incidentRoutes, { prefix: "/api" });
 await app.register(monitorRoutes, { prefix: "/api" });
 await app.register(publicStatusRoutes, { prefix: "/api" });
+await app.register(realtimeRoutes, { prefix: "/api" });
 
 app.get("/", async () => ({
   name: "PulseOps AI API",
-  version: "0.6.0",
+  version: "0.7.0",
   status: "ok",
 }));
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, "Shutting down PulseOps API");
   await app.close();
+  await closeRealtimePublisher();
   await db.$disconnect();
   process.exit(0);
 };
@@ -58,6 +62,7 @@ try {
   await app.listen({ host: env.API_HOST, port: env.API_PORT });
 } catch (error) {
   app.log.error(error);
+  await closeRealtimePublisher();
   await db.$disconnect();
   process.exit(1);
 }
