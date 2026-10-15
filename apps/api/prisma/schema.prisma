@@ -36,16 +36,16 @@ enum IncidentStatus {
 }
 
 model User {
-  id              String           @id @default(cuid())
-  email           String           @unique
-  name            String
-  passwordHash    String
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  sessions        Session[]
-  memberships     Membership[]
+  id               String           @id @default(cuid())
+  email            String           @unique
+  name             String
+  passwordHash     String
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  sessions         Session[]
+  memberships      Membership[]
   createdIncidents Incident[]       @relation("IncidentCreator")
-  incidentUpdates IncidentUpdate[] @relation("IncidentUpdateAuthor")
+  incidentUpdates  IncidentUpdate[] @relation("IncidentUpdateAuthor")
 }
 
 model Session {
@@ -61,14 +61,17 @@ model Session {
 }
 
 model Organization {
-  id          String       @id @default(cuid())
-  name        String
-  slug        String       @unique
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  memberships Membership[]
-  services    Service[]
-  incidents   Incident[]
+  id                    String       @id @default(cuid())
+  name                  String
+  slug                  String       @unique
+  statusPageEnabled     Boolean      @default(false)
+  statusPageTitle       String?
+  statusPageDescription String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  memberships           Membership[]
+  services              Service[]
+  incidents             Incident[]
 }
 
 model Membership {
@@ -104,19 +107,19 @@ model Service {
 }
 
 model Incident {
-  id             String           @id @default(cuid())
+  id             String            @id @default(cuid())
   title          String
   summary        String?
   severity       IncidentSeverity
-  status         IncidentStatus   @default(INVESTIGATING)
-  startedAt      DateTime         @default(now())
+  status         IncidentStatus    @default(INVESTIGATING)
+  startedAt      DateTime          @default(now())
   resolvedAt     DateTime?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
   organizationId String
   createdById    String
-  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdBy      User             @relation("IncidentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User              @relation("IncidentCreator", fields: [createdById], references: [id], onDelete: Restrict)
   services       IncidentService[]
   updates        IncidentUpdate[]
 
