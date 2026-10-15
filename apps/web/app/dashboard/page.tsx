@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../lib/api";
 import styles from "./dashboard.module.css";
+import ragStyles from "./rag.module.css";
 
 type Organization = { id: string; name: string; slug: string; role: "OWNER" | "ADMIN" | "RESPONDER" | "VIEWER" };
 type ServiceStatus = "OPERATIONAL" | "DEGRADED" | "PARTIAL_OUTAGE" | "MAJOR_OUTAGE" | "MAINTENANCE";
@@ -17,6 +18,17 @@ type Incident = {
   status: IncidentStatus;
   startedAt: string;
   services: Array<{ service: Service }>;
+};
+type SimilarIncident = {
+  incidentId: string;
+  title: string;
+  summary: string | null;
+  severity: "MINOR" | "MAJOR" | "CRITICAL";
+  startedAt: string;
+  resolvedAt: string | null;
+  similarity: number;
+  services: string[];
+  resolutionEvidence: string[];
 };
 type AiArtifact = { id: string; type: "INCIDENT_ANALYSIS" | "POSTMORTEM"; payload: Record<string, unknown>; model: string; createdAt: string };
 type ReliabilityResponse = {
@@ -52,6 +64,7 @@ type ServiceResponse = { services: Service[] };
 type IncidentResponse = { incidents: Incident[] };
 type AiArtifactResponse = { artifacts: AiArtifact[] };
 type AiGenerateResponse = { artifact: AiArtifact; disclaimer: string };
+type SimilarIncidentResponse = { model: string; similarIncidents: SimilarIncident[]; disclaimer: string };
 
 const statusLabel: Record<ServiceStatus, string> = {
   OPERATIONAL: "Operational",
@@ -86,14 +99,17 @@ function formatMinutes(value: number | null | undefined) {
 
 function compactArtifact(artifact: AiArtifact | null) {
   if (!artifact) return null;
-  const payload = artifact.payload as {
+  return artifact.payload as {
     summary?: string;
     probableCause?: string;
     confidence?: number;
     suggestedActions?: string[];
     customerUpdate?: string;
+    retrieval?: {
+      model?: string | null;
+      similarIncidents?: SimilarIncident[];
+    };
   };
-  return payload;
 }
 
 export default function DashboardPage() {
@@ -106,8 +122,11 @@ export default function DashboardPage() {
   const [reliability, setReliability] = useState<ReliabilityResponse | null>(null);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [artifact, setArtifact] = useState<AiArtifact | null>(null);
+  const [similarIncidents, setSimilarIncidents] = useState<SimilarIncident[]>([]);
+  const [embeddingModel, setEmbeddingModel] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [aiLoading, setAiLoading] = useState(false);
+  const [similarLoading, setSimilarLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
@@ -117,7 +136,7 @@ export default function DashboardPage() {
 
   const activeIncidents = useMemo(() => incidents.filter((incident) => incident.status !== "RESOLVED"), [incidents]);
   const unhealthyServices = useMemo(() => services.filter((service) => service.status !== "OPERATIONAL"), [services]);
-  const riskiestService = reliability?.services[0] ?? null;
+  const riskiestService = reliability?.services.find((service) => service.incidentCount > 0 || service.failedChecks > 0) ?? null;
 
   const loadWorkspace = useCallback(async (authToken: string, orgId: string) => {
     if (!orgId) return;
@@ -173,6 +192,8 @@ export default function DashboardPage() {
   }, [token, organizationId, loading, loadWorkspace]);
 
   useEffect(() => {
+    setSimilarIncidents([]);
+    setEmbeddingModel(null);
     if (!token || !organizationId || !selectedIncidentId) {
       setArtifact(null);
       return;
@@ -182,13 +203,21 @@ export default function DashboardPage() {
       {},
       token,
     )
-      .then((result) => setArtifact(result.artifacts.find((item) => item.type === "INCIDENT_ANALYSIS") ?? null))
+      .then((result) => {
+        const nextArtifact = result.artifacts.find((item) => item.type === "INCIDENT_ANALYSIS") ?? null;
+        setArtifact(nextArtifact);
+        const retrieval = compactArtifact(nextArtifact)?.retrieval;
+        setSimilarIncidents(retrieval?.similarIncidents ?? []);
+        setEmbeddingModel(retrieval?.model ?? null);
+      })
       .catch(() => setArtifact(null));
   }, [token, organizationId, selectedIncidentId]);
 
   async function changeOrganization(nextId: string) {
     setOrganizationId(nextId);
     setArtifact(null);
+    setSimilarIncidents([]);
+    setEmbeddingModel(null);
     setReliability(null);
     setError(null);
     if (!token) return;
@@ -199,6 +228,25 @@ export default function DashboardPage() {
       setError(cause instanceof Error ? cause.message : "Unable to switch workspace");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function findSimilarIncidents() {
+    if (!token || !organizationId || !selectedIncidentId) return;
+    setSimilarLoading(true);
+    setError(null);
+    try {
+      const result = await apiRequest<SimilarIncidentResponse>(
+        `/api/organizations/${organizationId}/incidents/${selectedIncidentId}/ai/similar`,
+        { method: "POST", body: JSON.stringify({ topK: 5, candidateLimit: 30 }) },
+        token,
+      );
+      setSimilarIncidents(result.similarIncidents);
+      setEmbeddingModel(result.model);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Similar-incident retrieval failed");
+    } finally {
+      setSimilarLoading(false);
     }
   }
 
@@ -213,6 +261,9 @@ export default function DashboardPage() {
         token,
       );
       setArtifact(result.artifact);
+      const retrieval = compactArtifact(result.artifact)?.retrieval;
+      setSimilarIncidents(retrieval?.similarIncidents ?? []);
+      setEmbeddingModel(retrieval?.model ?? null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "AI analysis failed");
     } finally {
@@ -320,7 +371,7 @@ export default function DashboardPage() {
             <div className={styles.copilotGrid}>
               <article><span>Incident mix</span><p>{reliability.incidents.severity.CRITICAL} critical · {reliability.incidents.severity.MAJOR} major · {reliability.incidents.severity.MINOR} minor</p></article>
               <article><span>Monitoring latency</span><p>{reliability.monitoring.averageResponseTimeMs === null ? "No check latency yet." : `${reliability.monitoring.averageResponseTimeMs} ms average response time across recorded checks.`}</p></article>
-              <article><span>Highest incident load</span><p>{riskiestService ? `${riskiestService.name}: ${riskiestService.incidentCount} incidents, ${riskiestService.failedChecks} failed checks.` : "No incident history in this window."}</p></article>
+              <article><span>Highest incident load</span><p>{riskiestService ? `${riskiestService.name}: ${riskiestService.incidentCount} incidents, ${riskiestService.failedChecks} failed checks.` : "No incident or failed-check load in this window."}</p></article>
               <article><span>Resolved workload</span><p>{reliability.incidents.resolved} of {reliability.incidents.total} incidents resolved in the selected 30-day window.</p></article>
             </div>
           </section>
@@ -329,20 +380,55 @@ export default function DashboardPage() {
         <section className={styles.copilot}>
           <div className={styles.copilotHeader}>
             <div><span>AI INCIDENT COPILOT</span><h2>{selectedIncident ? selectedIncident.title : "Select an incident to analyze"}</h2></div>
-            <button disabled={!selectedIncident || aiLoading} onClick={() => void runAiAnalysis()}>{aiLoading ? "Analyzing evidence…" : artifact ? "Run fresh analysis" : "Analyze incident"}</button>
+            <div className={styles.topActions}>
+              <button disabled={!selectedIncident || similarLoading} onClick={() => void findSimilarIncidents()}>{similarLoading ? "Searching history…" : "Find similar incidents"}</button>
+              <button disabled={!selectedIncident || aiLoading} onClick={() => void runAiAnalysis()}>{aiLoading ? "Analyzing evidence…" : artifact ? "Run fresh analysis" : "Analyze incident"}</button>
+            </div>
           </div>
 
           {selectedIncident ? (
-            <div className={styles.copilotGrid}>
-              <article><span>Summary</span><p>{latestAnalysis?.summary ?? selectedIncident.summary ?? "Run the copilot to generate a grounded incident summary."}</p></article>
-              <article><span>Probable cause</span><p>{latestAnalysis?.probableCause ?? "No AI hypothesis generated yet."}</p>{typeof latestAnalysis?.confidence === "number" ? <strong>{latestAnalysis.confidence}% confidence</strong> : null}</article>
-              <article><span>Suggested actions</span>{latestAnalysis?.suggestedActions?.length ? <ol>{latestAnalysis.suggestedActions.map((action) => <li key={action}>{action}</li>)}</ol> : <p>Actions appear here after analysis.</p>}</article>
-              <article><span>Customer update draft</span><p>{latestAnalysis?.customerUpdate ?? "A publish-ready draft will appear here, but publication always remains a human decision."}</p></article>
-            </div>
+            <>
+              <div className={styles.copilotGrid}>
+                <article><span>Summary</span><p>{latestAnalysis?.summary ?? selectedIncident.summary ?? "Run the copilot to generate a grounded incident summary."}</p></article>
+                <article><span>Probable cause</span><p>{latestAnalysis?.probableCause ?? "No AI hypothesis generated yet."}</p>{typeof latestAnalysis?.confidence === "number" ? <strong>{latestAnalysis.confidence}% confidence</strong> : null}</article>
+                <article><span>Suggested actions</span>{latestAnalysis?.suggestedActions?.length ? <ol>{latestAnalysis.suggestedActions.map((action) => <li key={action}>{action}</li>)}</ol> : <p>Actions appear here after analysis.</p>}</article>
+                <article><span>Customer update draft</span><p>{latestAnalysis?.customerUpdate ?? "A publish-ready draft will appear here, but publication always remains a human decision."}</p></article>
+              </div>
+
+              <div className={ragStyles.retrieval}>
+                <div className={ragStyles.retrievalHeader}>
+                  <div>
+                    <span>HISTORICAL MEMORY</span>
+                    <h3>Similar resolved incidents</h3>
+                  </div>
+                  <small>{embeddingModel ? `Embedding model: ${embeddingModel}` : "Run retrieval to compare historical incidents"}</small>
+                </div>
+
+                {similarIncidents.length ? (
+                  <div className={ragStyles.cards}>
+                    {similarIncidents.map((incident) => (
+                      <article className={ragStyles.card} key={incident.incidentId}>
+                        <div className={ragStyles.scoreRow}>
+                          <span className={ragStyles.score}>{Math.round(incident.similarity * 100)}% similar</span>
+                          <span className={ragStyles.severity} data-severity={incident.severity}>{incident.severity.toLowerCase()}</span>
+                        </div>
+                        <h4>{incident.title}</h4>
+                        <p>{incident.summary ?? "No historical summary."}</p>
+                        <div className={ragStyles.services}>{incident.services.join(" · ") || "No services recorded"}</div>
+                        {incident.resolutionEvidence.at(-1) ? <blockquote>{incident.resolutionEvidence.at(-1)}</blockquote> : null}
+                        <small>{incident.resolvedAt ? `Resolved ${relativeTime(incident.resolvedAt)}` : "Historical incident"}</small>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className={ragStyles.empty}>No retrieved analogies yet. Retrieval only compares against resolved incidents and never treats similarity as proof of the same root cause.</div>
+                )}
+              </div>
+            </>
           ) : (
             <div className={styles.emptyLarge}>Create or select an incident to activate the copilot.</div>
           )}
-          <p className={styles.disclaimer}>AI output is advisory and must be verified against operational evidence before action or publication.</p>
+          <p className={styles.disclaimer}>AI output is advisory. Semantic similarity is historical context, not root-cause evidence; verify operational facts before action or publication.</p>
         </section>
       </section>
     </main>
