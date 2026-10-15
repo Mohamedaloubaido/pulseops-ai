@@ -10,7 +10,7 @@
     "start": "node dist/index.js",
     "pretypecheck": "npm run db:generate",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test test/**/*.test.ts",
+    "test": "tsx --test test/*.test.ts",
     "db:generate": "prisma generate --schema ../api/prisma/schema.prisma"
   },
   "dependencies": {
