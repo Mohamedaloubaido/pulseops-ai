@@ -14,6 +14,14 @@ enum OrganizationRole {
   VIEWER
 }
 
+enum ServiceStatus {
+  OPERATIONAL
+  DEGRADED
+  PARTIAL_OUTAGE
+  MAJOR_OUTAGE
+  MAINTENANCE
+}
+
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
@@ -44,6 +52,7 @@ model Organization {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   memberships Membership[]
+  services    Service[]
 }
 
 model Membership {
@@ -58,4 +67,21 @@ model Membership {
 
   @@unique([userId, organizationId])
   @@index([organizationId])
+}
+
+model Service {
+  id             String        @id @default(cuid())
+  name           String
+  slug           String
+  description    String?
+  status         ServiceStatus @default(OPERATIONAL)
+  displayOrder   Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, displayOrder])
+  @@index([organizationId, status])
 }
