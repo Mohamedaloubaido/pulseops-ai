@@ -41,6 +41,11 @@ enum MonitorStatus {
   DOWN
 }
 
+enum AiArtifactType {
+  INCIDENT_ANALYSIS
+  POSTMORTEM
+}
+
 model User {
   id               String           @id @default(cuid())
   email            String           @unique
@@ -52,6 +57,7 @@ model User {
   memberships      Membership[]
   createdIncidents Incident[]       @relation("IncidentCreator")
   incidentUpdates  IncidentUpdate[] @relation("IncidentUpdateAuthor")
+  aiArtifacts      AiArtifact[]     @relation("AiArtifactCreator")
 }
 
 model Session {
@@ -114,22 +120,22 @@ model Service {
 }
 
 model Monitor {
-  id                 String         @id @default(cuid())
-  name               String
-  url                String
-  intervalSeconds    Int            @default(60)
-  timeoutMs          Int            @default(5000)
-  expectedStatus     Int            @default(200)
-  enabled            Boolean        @default(true)
-  lastStatus         MonitorStatus  @default(UNKNOWN)
-  lastCheckedAt      DateTime?
-  lastResponseTimeMs Int?
-  consecutiveFailures Int           @default(0)
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
-  serviceId          String
-  service            Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  checks             MonitorCheck[]
+  id                  String         @id @default(cuid())
+  name                String
+  url                 String
+  intervalSeconds     Int            @default(60)
+  timeoutMs           Int            @default(5000)
+  expectedStatus      Int            @default(200)
+  enabled             Boolean        @default(true)
+  lastStatus          MonitorStatus  @default(UNKNOWN)
+  lastCheckedAt       DateTime?
+  lastResponseTimeMs  Int?
+  consecutiveFailures Int            @default(0)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  serviceId           String
+  service             Service        @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  checks              MonitorCheck[]
 
   @@index([serviceId, enabled])
   @@index([enabled, lastCheckedAt])
@@ -164,6 +170,7 @@ model Incident {
   createdBy      User              @relation("IncidentCreator", fields: [createdById], references: [id], onDelete: Restrict)
   services       IncidentService[]
   updates        IncidentUpdate[]
+  aiArtifacts    AiArtifact[]
 
   @@index([organizationId, status])
   @@index([organizationId, createdAt])
@@ -190,4 +197,19 @@ model IncidentUpdate {
   author     User            @relation("IncidentUpdateAuthor", fields: [authorId], references: [id], onDelete: Restrict)
 
   @@index([incidentId, createdAt])
+}
+
+model AiArtifact {
+  id           String         @id @default(cuid())
+  type         AiArtifactType
+  payload      Json
+  model        String
+  responseId   String?
+  createdAt    DateTime       @default(now())
+  incidentId   String
+  createdById  String
+  incident     Incident       @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  createdBy    User           @relation("AiArtifactCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([incidentId, type, createdAt])
 }
