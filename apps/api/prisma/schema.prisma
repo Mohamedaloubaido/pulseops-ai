@@ -22,15 +22,30 @@ enum ServiceStatus {
   MAINTENANCE
 }
 
+enum IncidentSeverity {
+  MINOR
+  MAJOR
+  CRITICAL
+}
+
+enum IncidentStatus {
+  INVESTIGATING
+  IDENTIFIED
+  MONITORING
+  RESOLVED
+}
+
 model User {
-  id           String       @id @default(cuid())
-  email        String       @unique
-  name         String
-  passwordHash String
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  sessions     Session[]
-  memberships Membership[]
+  id              String           @id @default(cuid())
+  email           String           @unique
+  name            String
+  passwordHash    String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  sessions        Session[]
+  memberships     Membership[]
+  createdIncidents Incident[]       @relation("IncidentCreator")
+  incidentUpdates IncidentUpdate[] @relation("IncidentUpdateAuthor")
 }
 
 model Session {
@@ -53,6 +68,7 @@ model Organization {
   updatedAt   DateTime     @updatedAt
   memberships Membership[]
   services    Service[]
+  incidents   Incident[]
 }
 
 model Membership {
@@ -70,18 +86,63 @@ model Membership {
 }
 
 model Service {
-  id             String        @id @default(cuid())
+  id             String            @id @default(cuid())
   name           String
   slug           String
   description    String?
-  status         ServiceStatus @default(OPERATIONAL)
-  displayOrder   Int           @default(0)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  status         ServiceStatus     @default(OPERATIONAL)
+  displayOrder   Int               @default(0)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
   organizationId String
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  incidents      IncidentService[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, displayOrder])
   @@index([organizationId, status])
+}
+
+model Incident {
+  id             String           @id @default(cuid())
+  title          String
+  summary        String?
+  severity       IncidentSeverity
+  status         IncidentStatus   @default(INVESTIGATING)
+  startedAt      DateTime         @default(now())
+  resolvedAt     DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  organizationId String
+  createdById    String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User             @relation("IncidentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  services       IncidentService[]
+  updates        IncidentUpdate[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+}
+
+model IncidentService {
+  incidentId String
+  serviceId  String
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([incidentId, serviceId])
+  @@index([serviceId])
+}
+
+model IncidentUpdate {
+  id         String          @id @default(cuid())
+  message    String
+  status     IncidentStatus?
+  createdAt  DateTime        @default(now())
+  incidentId String
+  authorId   String
+  incident   Incident        @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  author     User            @relation("IncidentUpdateAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([incidentId, createdAt])
 }
