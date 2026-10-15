@@ -81,8 +81,11 @@ export async function generateAiJson({
   });
 
   if (!response.ok) {
-    const providerBody = await response.text();
-    console.error("OpenAI Responses API error", response.status, providerBody.slice(0, 500));
+    console.error(
+      "OpenAI Responses API error",
+      response.status,
+      response.headers.get("x-request-id") ?? "no-request-id",
+    );
     throw new ApiError(502, "AI provider request failed");
   }
 
