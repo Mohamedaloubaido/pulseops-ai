@@ -5,6 +5,7 @@ import { ApiError } from "./lib/api-error.js";
 import { db } from "./lib/db.js";
 import { authRoutes } from "./routes/auth.js";
 import { healthRoutes } from "./routes/health.js";
+import { incidentRoutes } from "./routes/incidents.js";
 import { organizationRoutes } from "./routes/organizations.js";
 import { serviceRoutes } from "./routes/services.js";
 
@@ -31,10 +32,11 @@ await app.register(healthRoutes, { prefix: "/api" });
 await app.register(authRoutes, { prefix: "/api" });
 await app.register(organizationRoutes, { prefix: "/api" });
 await app.register(serviceRoutes, { prefix: "/api" });
+await app.register(incidentRoutes, { prefix: "/api" });
 
 app.get("/", async () => ({
   name: "PulseOps AI API",
-  version: "0.3.0",
+  version: "0.4.0",
   status: "ok",
 }));
 
