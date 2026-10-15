@@ -1,117 +1,150 @@
 # PulseOps AI
 
-**AI-assisted incident operations platform** for realtime monitoring, service health, status communication, incident response and postmortems.
+**AI-assisted incident operations platform** for service monitoring, incident response, realtime coordination, public status communication and postmortems.
 
-PulseOps AI is designed as a production-minded full-stack SaaS project rather than a chatbot demo. The AI layer sits inside the incident workflow: it will summarize events, suggest likely causes, propose next actions, draft public updates and generate postmortems from the incident timeline.
+PulseOps AI is a production-minded full-stack SaaS project rather than a chatbot demo. AI sits inside the incident workflow and works from operational evidence: incident timelines, affected services and recent monitor checks.
 
-## Current foundation
+## What is implemented
 
-This first milestone establishes the platform skeleton:
-
-- npm workspaces monorepo
-- Next.js + React web application
-- Fastify + TypeScript API
-- strict TypeScript configuration
-- Zod-based environment validation
-- PostgreSQL and Redis local infrastructure via Docker Compose
-- ESLint flat config
-- GitHub Actions CI for lint, typecheck and build
-- API health endpoint
+- Multi-tenant users, organizations and RBAC
+- Secure scrypt password hashing and opaque bearer sessions
+- Service registry and operational health states
+- Incident lifecycle, affected services and authored timeline updates
+- Public status pages with recent incident history
+- Redis/BullMQ uptime monitoring worker
+- Monitor history, retry/backoff and outage confirmation
+- Redis-backed realtime organization/status events
+- Authenticated operations dashboard
+- Evidence-grounded AI incident analysis
+- Probable root-cause hypotheses with confidence indicators
+- Suggested next actions and customer-update drafts
+- AI-assisted postmortem generation for resolved incidents
+- Persisted AI artifacts for traceability
+- Docker-based PostgreSQL + Redis local infrastructure
 
 ## Architecture
 
 ```text
-                         ┌──────────────────────┐
-                         │      Next.js Web     │
-                         │   Operations UI      │
-                         └──────────┬───────────┘
-                                    │
-                                    ▼
-                         ┌──────────────────────┐
-                         │     Fastify API      │
-                         │ Auth / Incidents /   │
-                         │ Services / AI        │
-                         └───────┬───────┬──────┘
-                                 │       │
-                    ┌────────────┘       └────────────┐
-                    ▼                                 ▼
-          ┌──────────────────┐              ┌──────────────────┐
-          │    PostgreSQL    │              │      Redis       │
-          │ App data + later │              │ queues + realtime│
-          │ pgvector search  │              │ coordination     │
-          └──────────────────┘              └──────────────────┘
+                          ┌─────────────────────────┐
+                          │       Next.js Web       │
+                          │ Landing / Dashboard /   │
+                          │ Public Status Pages     │
+                          └────────────┬────────────┘
+                                       │
+                                       ▼
+                          ┌─────────────────────────┐
+                          │       Fastify API       │
+                          │ Auth / RBAC / Services  │
+                          │ Incidents / AI / SSE    │
+                          └──────┬─────────┬────────┘
+                                 │         │
+                 ┌───────────────┘         └───────────────┐
+                 ▼                                         ▼
+       ┌──────────────────┐                     ┌──────────────────┐
+       │    PostgreSQL    │                     │      Redis       │
+       │ tenants, health, │                     │ BullMQ + Pub/Sub │
+       │ incidents, AI    │                     └────────┬─────────┘
+       └──────────────────┘                              │
+                                                       ▼
+                                            ┌──────────────────────┐
+                                            │ Monitoring Worker    │
+                                            │ HTTP checks + state  │
+                                            └──────────────────────┘
 ```
 
-## Planned product capabilities
+## Run the demo locally
 
-- Organizations, users and RBAC
-- Service registry and health states
-- Incident lifecycle and timeline
-- Public status pages
-- Scheduled maintenance
-- Background uptime checks with Redis/BullMQ
-- Realtime dashboard updates
-- AI incident summaries
-- Probable root-cause suggestions with confidence indicators
-- Suggested next actions
-- Customer-facing status update generation
-- Similar-incident retrieval with embeddings + pgvector
-- AI-assisted postmortems
-- Reliability analytics including MTTR and incident frequency
+Requirements:
+
+- Node.js 20.19+
+- npm
+- Docker + Docker Compose
+
+Create your environment file and start infrastructure:
+
+```bash
+cp .env.example .env
+docker compose up -d
+```
+
+Install dependencies and apply the committed database migrations:
+
+```bash
+npm install
+npm run db:deploy
+```
+
+Seed a realistic local workspace:
+
+```bash
+npm run demo:seed
+```
+
+Start the API, web app and monitoring worker together:
+
+```bash
+npm run dev
+```
+
+Open:
+
+- Operations login: `http://localhost:3000/login`
+- Public status page: `http://localhost:3000/status/northstar-cloud`
+- API health: `http://localhost:4000/api/health`
+
+Local demo credentials:
+
+```text
+Email: demo@pulseops.local
+Password: PulseOpsDemo123!
+```
+
+The seed is idempotent and is intended for local development. It refuses to run in `NODE_ENV=production` unless `ALLOW_DEMO_SEED=true` is explicitly set. You can override the local credentials with `DEMO_EMAIL` and `DEMO_PASSWORD`.
+
+### AI copilot
+
+The rest of the demo works without an AI key. To run incident analysis or postmortem generation, set:
+
+```bash
+OPENAI_API_KEY=...
+```
+
+The API uses the OpenAI Responses API with `store: false`. AI output is advisory only and never triggers automatic remediation or publication.
 
 ## Repository structure
 
 ```text
 pulseops-ai/
 ├── apps/
-│   ├── api/        # Fastify API
-│   └── web/        # Next.js operations UI
+│   ├── api/          # Fastify API + Prisma schema/migrations
+│   ├── web/          # Next.js landing, dashboard and status pages
+│   └── worker/       # BullMQ uptime monitoring worker
 ├── .github/
-│   └── workflows/  # CI
+│   └── workflows/    # CI configuration
 ├── docker-compose.yml
 ├── eslint.config.mjs
 ├── package.json
 └── tsconfig.base.json
 ```
 
-## Local development
-
-Requirements:
-
-- Node.js 20+
-- npm
-- Docker + Docker Compose
-
-Create your local environment file:
-
-```bash
-cp .env.example .env
-```
-
-Start PostgreSQL and Redis:
-
-```bash
-docker compose up -d
-```
-
-Install dependencies:
-
-```bash
-npm install
-```
-
-Run both workspaces in development mode:
-
-```bash
-npm run dev
-```
-
-The web app runs on `http://localhost:3000` and the API defaults to `http://localhost:4000`.
-
-Health check:
+## Core API workflow
 
 ```text
-GET http://localhost:4000/api/health
+Monitor check
+   ↓
+Service health
+   ↓
+Incident opened
+   ↓
+Timeline updates
+   ↓
+AI evidence analysis
+   ↓
+Suggested actions / customer update
+   ↓
+Monitoring / resolution
+   ↓
+AI-assisted postmortem
 ```
 
 ## Quality checks
@@ -124,7 +157,7 @@ npm run build
 
 ## Engineering roadmap
 
-The project is intentionally being developed through focused pull requests so each architectural capability is reviewable in isolation.
+Completed milestones:
 
 1. Project foundation
 2. Authentication, organizations and RBAC
@@ -133,14 +166,16 @@ The project is intentionally being developed through focused pull requests so ea
 5. Public status pages
 6. Monitoring workers
 7. Realtime operations
-8. AI Incident Copilot
-9. Similar-incident retrieval / RAG
-10. Postmortems and reliability analytics
+8. AI Incident Copilot + postmortems
+9. Authenticated operations dashboard
+10. Local demo environment
 
-## AI safety direction
+Next engineering targets include similar-incident retrieval with embeddings/pgvector, reliability analytics, scheduled maintenance, notifications/webhooks and broader automated tests.
 
-AI output will be presented as **assistance, not authoritative diagnosis**. Root-cause suggestions will carry confidence/context, customer-facing drafts will require deliberate publication, and the system will preserve the underlying incident evidence and human-authored timeline.
+## AI safety model
+
+PulseOps treats generated output as **assistance, not authoritative diagnosis**. Probable causes are labeled as hypotheses, confidence is explicit, prompts are grounded in stored incident evidence, customer-facing drafts require human publication, and postmortems preserve known unknowns rather than inventing missing facts.
 
 ---
 
-Built by Mohammed Al-Obaido as a production-minded full-stack and applied-AI engineering project.
+Built by **Mohammed Al-Obaido** as a full-stack and applied-AI engineering project.

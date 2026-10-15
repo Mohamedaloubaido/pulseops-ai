@@ -9,11 +9,13 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "dev": "concurrently -n api,web \"npm run dev -w @pulseops/api\" \"npm run dev -w @pulseops/web\"",
+    "dev": "concurrently -n api,web,worker \"npm run dev -w @pulseops/api\" \"npm run dev -w @pulseops/web\" \"npm run dev -w @pulseops/worker\"",
     "build": "npm run build --workspaces --if-present",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "check": "npm run lint && npm run typecheck && npm run build"
+    "check": "npm run lint && npm run typecheck && npm run build",
+    "db:deploy": "npm run db:deploy -w @pulseops/api",
+    "demo:seed": "npm run db:seed -w @pulseops/api"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
