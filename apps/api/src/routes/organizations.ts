@@ -15,6 +15,16 @@ const addMemberSchema = z.object({
   role: z.enum(["ADMIN", "RESPONDER", "VIEWER"]).default("VIEWER"),
 });
 
+const statusPageSettingsSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    title: z.string().trim().min(2).max(100).nullable().optional(),
+    description: z.string().trim().max(280).nullable().optional(),
+  })
+  .refine((value) => Object.values(value).some((field) => field !== undefined), {
+    message: "At least one status page setting is required",
+  });
+
 export const organizationRoutes: FastifyPluginAsync = async (app) => {
   app.get("/organizations", async (request) => {
     const auth = await requireAuth(request);
@@ -43,6 +53,34 @@ export const organizationRoutes: FastifyPluginAsync = async (app) => {
     });
 
     return reply.code(201).send({ organization });
+  });
+
+  app.patch("/organizations/:organizationId/status-page", async (request) => {
+    const auth = await requireAuth(request);
+    const { organizationId } = z.object({ organizationId: z.string().min(1) }).parse(request.params);
+    const parsed = statusPageSettingsSchema.safeParse(request.body);
+    if (!parsed.success) throw new ApiError(400, "Invalid status page settings");
+
+    await requireOrganizationRole(auth.user.id, organizationId, ["OWNER", "ADMIN"]);
+
+    const statusPage = await db.organization.update({
+      where: { id: organizationId },
+      data: {
+        statusPageEnabled: parsed.data.enabled,
+        statusPageTitle: parsed.data.title,
+        statusPageDescription: parsed.data.description,
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        statusPageEnabled: true,
+        statusPageTitle: true,
+        statusPageDescription: true,
+      },
+    });
+
+    return { statusPage };
   });
 
   app.get("/organizations/:organizationId/members", async (request) => {
