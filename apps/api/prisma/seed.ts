@@ -55,7 +55,7 @@ async function main() {
     create: { organizationId: organization.id, name: "API Gateway", slug: "api-gateway", description: "Public API edge and request routing", status: "MAJOR_OUTAGE", displayOrder: 0 },
   });
 
-  await db.service.upsert({
+  const primaryDatabase = await db.service.upsert({
     where: { organizationId_slug: { organizationId: organization.id, slug: "primary-database" } },
     update: { name: "Primary Database", description: "PostgreSQL primary cluster", status: "OPERATIONAL", displayOrder: 1 },
     create: { organizationId: organization.id, name: "Primary Database", slug: "primary-database", description: "PostgreSQL primary cluster", status: "OPERATIONAL", displayOrder: 1 },
@@ -141,11 +141,74 @@ async function main() {
     });
   }
 
+  const previousGatewayIncident = await db.incident.findFirst({
+    where: { organizationId: organization.id, title: "API gateway saturation after traffic spike" },
+  });
+
+  if (!previousGatewayIncident) {
+    const startedAt = new Date(now - 14 * 24 * 60 * 60_000);
+    const resolvedAt = new Date(startedAt.getTime() + 78 * 60_000);
+    const historical = await db.incident.create({
+      data: {
+        organizationId: organization.id,
+        createdById: user.id,
+        title: "API gateway saturation after traffic spike",
+        summary: "API requests experienced elevated latency and intermittent 5xx responses during a sudden traffic increase.",
+        severity: "MAJOR",
+        status: "RESOLVED",
+        startedAt,
+        resolvedAt,
+        services: { create: [{ serviceId: apiGateway.id }] },
+      },
+    });
+
+    await db.incidentUpdate.createMany({
+      data: [
+        { incidentId: historical.id, authorId: user.id, status: "INVESTIGATING", message: "Gateway latency and 5xx responses increased while database health remained normal.", createdAt: new Date(startedAt.getTime() + 4 * 60_000) },
+        { incidentId: historical.id, authorId: user.id, status: "IDENTIFIED", message: "Gateway worker capacity was saturated by the traffic spike; upstream database metrics were within baseline.", createdAt: new Date(startedAt.getTime() + 31 * 60_000) },
+        { incidentId: historical.id, authorId: user.id, status: "MONITORING", message: "Gateway worker capacity was increased and error rates began returning to baseline.", createdAt: new Date(startedAt.getTime() + 53 * 60_000) },
+        { incidentId: historical.id, authorId: user.id, status: "RESOLVED", message: "Latency and 5xx rates remained normal after capacity adjustment. Incident resolved.", createdAt: resolvedAt },
+      ],
+    });
+  }
+
+  const previousDatabaseIncident = await db.incident.findFirst({
+    where: { organizationId: organization.id, title: "Database connection pool exhaustion" },
+  });
+
+  if (!previousDatabaseIncident) {
+    const startedAt = new Date(now - 24 * 24 * 60 * 60_000);
+    const resolvedAt = new Date(startedAt.getTime() + 96 * 60_000);
+    const historical = await db.incident.create({
+      data: {
+        organizationId: organization.id,
+        createdById: user.id,
+        title: "Database connection pool exhaustion",
+        summary: "Application requests timed out because database connection pool capacity was exhausted.",
+        severity: "CRITICAL",
+        status: "RESOLVED",
+        startedAt,
+        resolvedAt,
+        services: { create: [{ serviceId: primaryDatabase.id }] },
+      },
+    });
+
+    await db.incidentUpdate.createMany({
+      data: [
+        { incidentId: historical.id, authorId: user.id, status: "INVESTIGATING", message: "Request timeouts correlated with a sharp increase in database connection wait time.", createdAt: new Date(startedAt.getTime() + 6 * 60_000) },
+        { incidentId: historical.id, authorId: user.id, status: "IDENTIFIED", message: "The application connection pool reached its configured maximum and queued requests began timing out.", createdAt: new Date(startedAt.getTime() + 38 * 60_000) },
+        { incidentId: historical.id, authorId: user.id, status: "MONITORING", message: "Pool limits were adjusted and long-running connections were cleared while query latency was monitored.", createdAt: new Date(startedAt.getTime() + 65 * 60_000) },
+        { incidentId: historical.id, authorId: user.id, status: "RESOLVED", message: "Connection wait time and request error rates stayed within baseline after the pool correction.", createdAt: resolvedAt },
+      ],
+    });
+  }
+
   console.log("\nPulseOps demo workspace is ready.");
   console.log(`Login: ${demoEmail}`);
   console.log(`Password: ${demoPassword}`);
   console.log("Status page: http://localhost:3000/status/northstar-cloud");
-  console.log("Dashboard: http://localhost:3000/login\n");
+  console.log("Dashboard: http://localhost:3000/login");
+  console.log("Historical resolved incidents are included for similar-incident retrieval.\n");
 }
 
 main()

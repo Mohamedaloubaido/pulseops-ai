@@ -84,6 +84,7 @@ model Organization {
   memberships           Membership[]
   services              Service[]
   incidents             Incident[]
+  incidentEmbeddings    IncidentEmbedding[]
 }
 
 model Membership {
@@ -171,6 +172,7 @@ model Incident {
   services       IncidentService[]
   updates        IncidentUpdate[]
   aiArtifacts    AiArtifact[]
+  embedding      IncidentEmbedding?
 
   @@index([organizationId, status])
   @@index([organizationId, createdAt])
@@ -212,4 +214,21 @@ model AiArtifact {
   createdBy    User           @relation("AiArtifactCreator", fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([incidentId, type, createdAt])
+}
+
+model IncidentEmbedding {
+  id             String       @id @default(cuid())
+  incidentId     String       @unique
+  organizationId String
+  model          String
+  dimensions     Int
+  contentHash    String
+  embedding      Float[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  incident       Incident     @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, model])
+  @@index([organizationId, updatedAt])
 }
