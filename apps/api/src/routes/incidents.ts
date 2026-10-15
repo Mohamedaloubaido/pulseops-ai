@@ -1,9 +1,10 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../auth/context.js";
 import { requireOrganizationRole } from "../auth/rbac.js";
 import { ApiError } from "../lib/api-error.js";
 import { db } from "../lib/db.js";
+import { publishOrganizationEvent } from "../realtime/bus.js";
 
 const incidentStatusSchema = z.enum([
   "INVESTIGATING",
@@ -33,6 +34,17 @@ async function requireIncident(organizationId: string, incidentId: string) {
     throw new ApiError(404, "Incident not found");
   }
   return incident;
+}
+
+function publishIncidentEvent(
+  request: FastifyRequest,
+  type: "incident.created" | "incident.updated",
+  organizationId: string,
+  entityId: string,
+) {
+  void publishOrganizationEvent({ type, organizationId, entityId }).catch((error) => {
+    request.log.error(error, "Failed to publish realtime incident event");
+  });
 }
 
 export const incidentRoutes: FastifyPluginAsync = async (app) => {
@@ -125,6 +137,7 @@ export const incidentRoutes: FastifyPluginAsync = async (app) => {
       return created;
     });
 
+    publishIncidentEvent(request, "incident.created", params.organizationId, incident.id);
     return reply.code(201).send({ incident });
   });
 
@@ -162,6 +175,7 @@ export const incidentRoutes: FastifyPluginAsync = async (app) => {
       return { incident: nextIncident, update };
     });
 
+    publishIncidentEvent(request, "incident.updated", params.organizationId, incident.id);
     return reply.code(201).send(result);
   });
 };
