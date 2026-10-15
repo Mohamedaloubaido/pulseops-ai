@@ -23,9 +23,13 @@ export default function Home() {
           A production-minded SaaS for service monitoring, incident response,
           status communication and postmortems.
         </p>
+        <div className="heroActions">
+          <a className="primaryAction" href="/login">Open operations workspace</a>
+          <a className="secondaryAction" href="https://github.com/Mohamedaloubaido/pulseops-ai">View source on GitHub</a>
+        </div>
         <div className="statusRow">
           <span className="statusDot" />
-          Foundation environment ready
+          Auth, monitoring, realtime events and AI copilot are implemented
         </div>
       </section>
 

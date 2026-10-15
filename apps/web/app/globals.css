@@ -24,6 +24,8 @@ select {
   font: inherit;
 }
 
+a { color: inherit; }
+
 .shell {
   width: min(1120px, calc(100% - 40px));
   margin: 0 auto;
@@ -62,6 +64,37 @@ h1 {
   color: #a1a1aa;
   font-size: 19px;
   line-height: 1.65;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.primaryAction,
+.secondaryAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 11px;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.primaryAction {
+  background: #eef1ff;
+  color: #111528;
+}
+
+.secondaryAction {
+  border: 1px solid #2b2f38;
+  background: rgba(17, 17, 19, 0.75);
+  color: #c5cad4;
 }
 
 .statusRow {
