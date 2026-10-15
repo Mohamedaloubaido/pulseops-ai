@@ -1,9 +1,10 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../auth/context.js";
 import { requireOrganizationRole } from "../auth/rbac.js";
 import { ApiError } from "../lib/api-error.js";
 import { db } from "../lib/db.js";
+import { publishOrganizationEvent } from "../realtime/bus.js";
 
 const serviceStatusSchema = z.enum([
   "OPERATIONAL",
@@ -61,6 +62,17 @@ async function requireService(organizationId: string, serviceId: string) {
   return service;
 }
 
+function publishServiceEvent(
+  request: FastifyRequest,
+  type: "service.created" | "service.updated" | "service.status_changed",
+  organizationId: string,
+  entityId: string,
+) {
+  void publishOrganizationEvent({ type, organizationId, entityId }).catch((error) => {
+    request.log.error(error, "Failed to publish realtime service event");
+  });
+}
+
 export const serviceRoutes: FastifyPluginAsync = async (app) => {
   app.get("/organizations/:organizationId/services", async (request) => {
     const auth = await requireAuth(request);
@@ -99,6 +111,7 @@ export const serviceRoutes: FastifyPluginAsync = async (app) => {
       },
     });
 
+    publishServiceEvent(request, "service.created", params.organizationId, service.id);
     return reply.code(201).send({ service });
   });
 
@@ -122,6 +135,7 @@ export const serviceRoutes: FastifyPluginAsync = async (app) => {
       data: { ...parsed.data, slug: nextSlug },
     });
 
+    publishServiceEvent(request, "service.updated", params.organizationId, service.id);
     return { service };
   });
 
@@ -145,6 +159,7 @@ export const serviceRoutes: FastifyPluginAsync = async (app) => {
       data: { status: parsed.data.status },
     });
 
+    publishServiceEvent(request, "service.status_changed", params.organizationId, service.id);
     return { service };
   });
 };
