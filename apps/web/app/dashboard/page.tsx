@@ -19,6 +19,33 @@ type Incident = {
   services: Array<{ service: Service }>;
 };
 type AiArtifact = { id: string; type: "INCIDENT_ANALYSIS" | "POSTMORTEM"; payload: Record<string, unknown>; model: string; createdAt: string };
+type ReliabilityResponse = {
+  window: { days: number; from: string; to: string };
+  incidents: {
+    total: number;
+    active: number;
+    resolved: number;
+    severity: { MINOR: number; MAJOR: number; CRITICAL: number };
+    meanTimeToResolveMinutes: number | null;
+  };
+  monitoring: {
+    checks: number;
+    upChecks: number;
+    downChecks: number;
+    checkSuccessRate: number | null;
+    averageResponseTimeMs: number | null;
+  };
+  services: Array<{
+    id: string;
+    name: string;
+    status: ServiceStatus;
+    incidentCount: number;
+    activeIncidentCount: number;
+    checks: number;
+    failedChecks: number;
+    checkSuccessRate: number | null;
+  }>;
+};
 
 type OrganizationResponse = { organizations: Organization[] };
 type ServiceResponse = { services: Service[] };
@@ -50,6 +77,13 @@ function relativeTime(value: string) {
   return `${Math.round(hours / 24)}d ago`;
 }
 
+function formatMinutes(value: number | null | undefined) {
+  if (value === null || value === undefined) return "—";
+  if (value < 60) return `${value}m`;
+  const hours = value / 60;
+  return `${hours >= 10 ? Math.round(hours) : Math.round(hours * 10) / 10}h`;
+}
+
 function compactArtifact(artifact: AiArtifact | null) {
   if (!artifact) return null;
   const payload = artifact.payload as {
@@ -69,6 +103,7 @@ export default function DashboardPage() {
   const [organizationId, setOrganizationId] = useState("");
   const [services, setServices] = useState<Service[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [reliability, setReliability] = useState<ReliabilityResponse | null>(null);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [artifact, setArtifact] = useState<AiArtifact | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,15 +117,18 @@ export default function DashboardPage() {
 
   const activeIncidents = useMemo(() => incidents.filter((incident) => incident.status !== "RESOLVED"), [incidents]);
   const unhealthyServices = useMemo(() => services.filter((service) => service.status !== "OPERATIONAL"), [services]);
+  const riskiestService = reliability?.services[0] ?? null;
 
   const loadWorkspace = useCallback(async (authToken: string, orgId: string) => {
     if (!orgId) return;
-    const [serviceResult, incidentResult] = await Promise.all([
+    const [serviceResult, incidentResult, reliabilityResult] = await Promise.all([
       apiRequest<ServiceResponse>(`/api/organizations/${orgId}/services`, {}, authToken),
       apiRequest<IncidentResponse>(`/api/organizations/${orgId}/incidents`, {}, authToken),
+      apiRequest<ReliabilityResponse>(`/api/organizations/${orgId}/analytics/reliability?days=30`, {}, authToken),
     ]);
     setServices(serviceResult.services);
     setIncidents(incidentResult.incidents);
+    setReliability(reliabilityResult);
     setSelectedIncidentId((current) => {
       if (current && incidentResult.incidents.some((incident) => incident.id === current)) return current;
       return incidentResult.incidents.find((incident) => incident.status !== "RESOLVED")?.id ?? incidentResult.incidents[0]?.id ?? null;
@@ -151,6 +189,7 @@ export default function DashboardPage() {
   async function changeOrganization(nextId: string) {
     setOrganizationId(nextId);
     setArtifact(null);
+    setReliability(null);
     setError(null);
     if (!token) return;
     setLoading(true);
@@ -218,6 +257,7 @@ export default function DashboardPage() {
           <span className={styles.navActive}>Overview</span>
           <span>Incidents <b>{activeIncidents.length}</b></span>
           <span>Services <b>{services.length}</b></span>
+          <span>Reliability</span>
           <span>AI Copilot</span>
         </nav>
         <button className={styles.logout} onClick={() => void logout()}>Sign out</button>
@@ -239,9 +279,9 @@ export default function DashboardPage() {
 
         <section className={styles.metrics}>
           <article><span>Service health</span><strong>{services.length ? Math.round(((services.length - unhealthyServices.length) / services.length) * 100) : 100}%</strong><small>{unhealthyServices.length ? `${unhealthyServices.length} need attention` : "All systems nominal"}</small></article>
-          <article><span>Active incidents</span><strong>{activeIncidents.length}</strong><small>{activeIncidents.filter((item) => item.severity === "CRITICAL").length} critical</small></article>
-          <article><span>Monitored services</span><strong>{services.length}</strong><small>Across this workspace</small></article>
-          <article><span>AI readiness</span><strong>{selectedIncident ? "Ready" : "Idle"}</strong><small>{artifact ? `Last: ${artifact.model}` : "Evidence-grounded analysis"}</small></article>
+          <article><span>Active incidents</span><strong>{activeIncidents.length}</strong><small>{reliability ? `${reliability.incidents.total} in last ${reliability.window.days}d` : "30-day window"}</small></article>
+          <article><span>Mean time to resolve</span><strong>{formatMinutes(reliability?.incidents.meanTimeToResolveMinutes)}</strong><small>{reliability ? `${reliability.incidents.resolved} resolved incidents` : "Waiting for analytics"}</small></article>
+          <article><span>Check success</span><strong>{reliability?.monitoring.checkSuccessRate === null || reliability?.monitoring.checkSuccessRate === undefined ? "—" : `${reliability.monitoring.checkSuccessRate}%`}</strong><small>{reliability ? `${reliability.monitoring.checks} checks · ${reliability.monitoring.downChecks} failed` : "30-day monitoring window"}</small></article>
         </section>
 
         <section className={styles.twoColumn}>
@@ -271,6 +311,20 @@ export default function DashboardPage() {
             </div>
           </div>
         </section>
+
+        {reliability ? (
+          <section className={styles.copilot}>
+            <div className={styles.copilotHeader}>
+              <div><span>30-DAY RELIABILITY SNAPSHOT</span><h2>{riskiestService ? `${riskiestService.name} has the highest incident load` : "Reliability signals are healthy"}</h2></div>
+            </div>
+            <div className={styles.copilotGrid}>
+              <article><span>Incident mix</span><p>{reliability.incidents.severity.CRITICAL} critical · {reliability.incidents.severity.MAJOR} major · {reliability.incidents.severity.MINOR} minor</p></article>
+              <article><span>Monitoring latency</span><p>{reliability.monitoring.averageResponseTimeMs === null ? "No check latency yet." : `${reliability.monitoring.averageResponseTimeMs} ms average response time across recorded checks.`}</p></article>
+              <article><span>Highest incident load</span><p>{riskiestService ? `${riskiestService.name}: ${riskiestService.incidentCount} incidents, ${riskiestService.failedChecks} failed checks.` : "No incident history in this window."}</p></article>
+              <article><span>Resolved workload</span><p>{reliability.incidents.resolved} of {reliability.incidents.total} incidents resolved in the selected 30-day window.</p></article>
+            </div>
+          </section>
+        ) : null}
 
         <section className={styles.copilot}>
           <div className={styles.copilotHeader}>
