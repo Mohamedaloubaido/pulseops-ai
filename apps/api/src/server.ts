@@ -5,6 +5,7 @@ import { env } from "./env.js";
 import { ApiError } from "./lib/api-error.js";
 import { db } from "./lib/db.js";
 import { closeRealtimePublisher } from "./realtime/bus.js";
+import { aiIncidentRoutes } from "./routes/ai-incidents.js";
 import { authRoutes } from "./routes/auth.js";
 import { healthRoutes } from "./routes/health.js";
 import { incidentRoutes } from "./routes/incidents.js";
@@ -44,13 +45,14 @@ await app.register(authRoutes, { prefix: "/api" });
 await app.register(organizationRoutes, { prefix: "/api" });
 await app.register(serviceRoutes, { prefix: "/api" });
 await app.register(incidentRoutes, { prefix: "/api" });
+await app.register(aiIncidentRoutes, { prefix: "/api" });
 await app.register(monitorRoutes, { prefix: "/api" });
 await app.register(publicStatusRoutes, { prefix: "/api" });
 await app.register(realtimeRoutes, { prefix: "/api" });
 
 app.get("/", async () => ({
   name: "PulseOps AI API",
-  version: "0.7.0",
+  version: "0.8.0",
   status: "ok",
 }));
 
