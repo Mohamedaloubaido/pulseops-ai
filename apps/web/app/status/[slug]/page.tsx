@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { LiveStatusRefresh } from "./live-refresh";
 import styles from "./status.module.css";
 
 type ServiceStatus =
@@ -72,8 +73,7 @@ function formatTime(value: string) {
   }).format(new Date(value));
 }
 
-async function loadStatus(slug: string): Promise<StatusData | null> {
-  const apiOrigin = process.env.PULSEOPS_API_URL ?? "http://localhost:4000";
+async function loadStatus(slug: string, apiOrigin: string): Promise<StatusData | null> {
   const response = await fetch(`${apiOrigin}/api/status/${encodeURIComponent(slug)}`, {
     cache: "no-store",
   });
@@ -125,13 +125,15 @@ export default async function PublicStatusPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const data = await loadStatus(slug);
+  const apiOrigin = process.env.NEXT_PUBLIC_PULSEOPS_API_URL ?? process.env.PULSEOPS_API_URL ?? "http://localhost:4000";
+  const data = await loadStatus(slug, apiOrigin);
   if (!data) notFound();
 
   const healthy = data.overallStatus === "OPERATIONAL";
 
   return (
     <main className={styles.page}>
+      <LiveStatusRefresh apiOrigin={apiOrigin} slug={slug} />
       <div className={styles.container}>
         <header className={styles.header}>
           <span className={styles.brand}>PULSEOPS AI</span>
