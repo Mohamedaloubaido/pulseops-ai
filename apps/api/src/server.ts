@@ -1,3 +1,4 @@
+import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { ZodError } from "zod";
 import { env } from "./env.js";
@@ -17,6 +18,12 @@ const app = Fastify({
   logger: {
     level: env.NODE_ENV === "production" ? "info" : "debug",
   },
+});
+
+await app.register(cors, {
+  origin: env.WEB_ORIGIN,
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["content-type", "authorization"],
 });
 
 app.setErrorHandler((error, request, reply) => {
