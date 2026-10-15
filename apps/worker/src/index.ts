@@ -1,4 +1,5 @@
 import { Queue, Worker } from "bullmq";
+import Redis from "ioredis";
 import { performance } from "node:perf_hooks";
 import { db } from "./db.js";
 import { env } from "./env.js";
@@ -20,6 +21,26 @@ function redisConnection() {
 
 const connection = redisConnection();
 const queue = new Queue<MonitorJob>("monitor-checks", { connection });
+const realtimePublisher = new Redis(env.REDIS_URL, {
+  enableReadyCheck: true,
+  maxRetriesPerRequest: 2,
+});
+
+async function publishMonitorEvent(organizationId: string, monitorId: string) {
+  try {
+    await realtimePublisher.publish(
+      `pulseops:organization:${organizationId}`,
+      JSON.stringify({
+        type: "monitor.checked",
+        organizationId,
+        entityId: monitorId,
+        occurredAt: new Date().toISOString(),
+      }),
+    );
+  } catch (error) {
+    console.error("[monitor] failed to publish realtime event", error);
+  }
+}
 
 async function syncServiceStatus(serviceId: string) {
   const [service, monitors] = await Promise.all([
@@ -47,7 +68,10 @@ async function syncServiceStatus(serviceId: string) {
 const worker = new Worker<MonitorJob>(
   "monitor-checks",
   async (job) => {
-    const monitor = await db.monitor.findUnique({ where: { id: job.data.monitorId } });
+    const monitor = await db.monitor.findUnique({
+      where: { id: job.data.monitorId },
+      include: { service: { select: { organizationId: true } } },
+    });
     if (!monitor || !monitor.enabled) return;
 
     let status: "UP" | "DOWN" = "DOWN";
@@ -61,7 +85,7 @@ const worker = new Worker<MonitorJob>(
         method: "GET",
         redirect: "manual",
         signal: AbortSignal.timeout(monitor.timeoutMs),
-        headers: { "user-agent": "PulseOps-Monitor/0.1" },
+        headers: { "user-agent": "PulseOps-Monitor/0.2" },
       });
       statusCode = response.status;
       status = response.status === monitor.expectedStatus ? "UP" : "DOWN";
@@ -100,6 +124,7 @@ const worker = new Worker<MonitorJob>(
     ]);
 
     await syncServiceStatus(monitor.serviceId);
+    await publishMonitorEvent(monitor.service.organizationId, monitor.id);
   },
   { connection, concurrency: env.MONITOR_CONCURRENCY },
 );
@@ -159,6 +184,7 @@ async function shutdown(signal: string) {
   clearInterval(scanTimer);
   await worker.close();
   await queue.close();
+  await realtimePublisher.quit();
   await db.$disconnect();
   process.exit(0);
 }
