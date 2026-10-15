@@ -1,6 +1,6 @@
 import { lookup } from "node:dns/promises";
 
-function isPrivateAddress(address: string) {
+export function isPrivateAddress(address: string) {
   const value = address.toLowerCase();
 
   if (
