@@ -13,7 +13,8 @@
     "build": "npm run build --workspaces --if-present",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "check": "npm run lint && npm run typecheck && npm run build",
+    "test": "npm run test --workspaces --if-present",
+    "check": "npm run lint && npm run test && npm run typecheck && npm run build",
     "db:deploy": "npm run db:deploy -w @pulseops/api",
     "demo:seed": "npm run db:seed -w @pulseops/api"
   },
